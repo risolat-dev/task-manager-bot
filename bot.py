@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from asgiref.sync import sync_to_async
+from aiohttp import web
 
 import logging
 
@@ -122,18 +123,38 @@ async def process_desc(message: types.Message, state: FSMContext):
 # ✅ Callback: Vazifani bajarildi deb belgilash
 @dp.callback_query(F.data.startswith("done_"))
 async def mark_as_done(callback: types.CallbackQuery):
-    task_id = int(callback.data.split("_")[1])
-    task = await sync_to_async(Task.objects.get)(id=task_id)
-    task.completed = True
-    await sync_to_async(task.save)()
+    try:
+        task_id = int(callback.data.split("_")[1])
+        task = await sync_to_async(Task.objects.get)(id=task_id)
+        task.completed = True
+        await sync_to_async(task.save)()
 
-    await callback.answer("Vazifa bajarildi!")
-    await callback.message.edit_text(f"📌 **{task.title}**\nHolati: ✅ Bajarildi", parse_mode="Markdown")
+        await callback.answer("Vazifa bajarildi!")
+        await callback.message.edit_text(f"📌 **{task.title}**\nHolati: ✅ Bajarildi", parse_mode="Markdown")
+    except Task.DoesNotExist:
+        await callback.answer("Kechirasiz, bu vazifa topilmadi yoki allaqachon o'chirilgan.", show_alert=True)
 
 
 # Botni yurgizish
+
+async def handle(request):
+    return web.Response(text="Bot is live!")
+
+
 async def main():
-    print("Bot ishga tushdi...")
+    # Veb-serverni fonda ishga tushirish
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    # Render bergan portda serverni yoqamiz
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+    # Endi botning o'zini ishga tushiramiz
+    print("Bot polling boshlandi...")
     await dp.start_polling(bot)
 
 
